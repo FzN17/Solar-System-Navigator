@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Solar System Navigator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600&family=Space+Mono:wght@400;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #03010a; --panel-bg: rgba(8,4,28,0.88);
+    --border: rgba(120,100,255,0.18); --accent: #a78bfa;
+    --accent2: #f59e0b; --text: #e2e0f0; --muted: #8b88a8;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Space Grotesk', sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
+  #canvas-container { position: fixed; inset: 0; z-index: 0; }
+  canvas { display: block; }
+
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px;
+    background: linear-gradient(to bottom, rgba(3,1,10,0.95) 0%, transparent 100%);
+    pointer-events: none;
+  }
+  #topbar h1 { font-family: 'Space Mono', monospace; font-size: 1rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); }
+  #topbar .hint { font-size: 0.72rem; color: var(--muted); letter-spacing: 0.06em; }
+
+  #data-status {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 20; font-family: 'Space Mono', monospace; font-size: 0.65rem;
+    letter-spacing: 0.1em; padding: 5px 14px; border-radius: 99px;
+    border: 1px solid var(--border); background: var(--panel-bg);
+    backdrop-filter: blur(10px); transition: all 0.4s ease; white-space: nowrap;
+  }
+  #data-status.live   { color: #4ade80; border-color: rgba(74,222,128,0.3); }
+  #data-status.static { color: var(--accent2); border-color: rgba(245,158,11,0.3); }
+  #data-status.loading{ color: var(--muted); }
+
+  #controls {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 10; display: flex; align-items: center; gap: 16px;
+    background: var(--panel-bg); border: 1px solid var(--border);
+    border-radius: 99px; padding: 10px 22px; backdrop-filter: blur(12px);
+  }
+  #controls label { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-family: 'Space Mono', monospace; }
+  #speed-slider { -webkit-appearance: none; width: 110px; height: 3px; background: var(--border); border-radius: 99px; outline: none; cursor: pointer; }
+  #speed-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+  #pause-btn { background: none; border: 1px solid var(--border); color: var(--accent); border-radius: 99px; padding: 4px 14px; font-family: 'Space Mono', monospace; font-size: 0.72rem; cursor: pointer; letter-spacing: 0.08em; transition: background 0.2s; }
+  #pause-btn:hover { background: rgba(167,139,250,0.12); }
+
+  #info-panel {
+    position: fixed; top: 50%; right: 28px; transform: translateY(-50%);
+    z-index: 10; width: 280px; background: var(--panel-bg);
+    border: 1px solid var(--border); border-radius: 16px; padding: 22px 20px;
+    backdrop-filter: blur(18px); opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+  }
+  #info-panel.visible { opacity: 1; pointer-events: auto; }
+  #info-panel .planet-label { font-family: 'Space Mono', monospace; font-size: 0.65rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+  #info-panel h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 12px; }
+  #info-panel .stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+  #info-panel .stat-row:last-of-type { border-bottom: none; }
+  #info-panel .stat-label { color: var(--muted); }
+  #info-panel .stat-value { font-family: 'Space Mono', monospace; font-size: 0.72rem; }
+  #info-panel .fun-fact { margin-top: 14px; font-size: 0.75rem; color: var(--muted); line-height: 1.55; border-top: 1px solid var(--border); padding-top: 12px; }
+  #info-panel .close-btn { position: absolute; top: 12px; right: 14px; background: none; border: none; color: var(--muted); font-size: 1rem; cursor: pointer; }
+
+  #planet-list { position: fixed; top: 50%; left: 20px; transform: translateY(-50%); z-index: 10; display: flex; flex-direction: column; gap: 6px; }
+  .planet-btn { background: none; border: 1px solid transparent; color: var(--muted); font-family: 'Space Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; padding: 5px 10px; border-radius: 6px; text-align: left; transition: all 0.15s; }
+  .planet-btn:hover, .planet-btn.active { color: var(--text); border-color: var(--border); background: rgba(167,139,250,0.07); }
+  .planet-btn .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
+
+  /* Inclination toggle */
+  #incl-toggle {
+    position: fixed; bottom: 24px; right: 28px; z-index: 10;
+    background: var(--panel-bg); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 99px; padding: 8px 16px;
+    font-family: 'Space Mono', monospace; font-size: 0.65rem;
+    letter-spacing: 0.08em; cursor: pointer; backdrop-filter: blur(12px);
+    transition: all 0.2s;
+  }
+  #incl-toggle.on { color: var(--accent); border-color: rgba(167,139,250,0.4); }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="topbar">
+  <h1>☀ Solar System Navigator</h1>
+  <span class="hint">Drag to rotate · Scroll to zoom · Click a planet</span>
+</div>
+
+<div id="data-status" class="loading">⏳ Checking for NASA data...</div>
+<div id="planet-list"></div>
+
+<div id="info-panel">
+  <button class="close-btn" id="close-panel">✕</button>
+  <div class="planet-label">Planet</div>
+  <h2 id="ip-name">—</h2>
+  <div class="stat-row"><span class="stat-label">Type</span><span class="stat-value" id="ip-type">—</span></div>
+  <div class="stat-row"><span class="stat-label">Diameter</span><span class="stat-value" id="ip-diameter">—</span></div>
+  <div class="stat-row"><span class="stat-label">Distance from Sun</span><span class="stat-value" id="ip-distance">—</span></div>
+  <div class="stat-row"><span class="stat-label">Orbital Period</span><span class="stat-value" id="ip-period">—</span></div>
+  <div class="stat-row"><span class="stat-label">Orbital Inclination</span><span class="stat-value" id="ip-incl">—</span></div>
+  <div class="stat-row"><span class="stat-label">Moons</span><span class="stat-value" id="ip-moons">—</span></div>
+  <div class="fun-fact" id="ip-fact">—</div>
+</div>
+
+<div id="controls">
+  <label>Speed</label>
+  <input type="range" id="speed-slider" min="0.1" max="5" step="0.1" value="1" />
+  <button id="pause-btn">⏸ Pause</button>
+</div>
+
+<button id="incl-toggle" class="on">⬡ Inclination: ON</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── Planet data with real orbital inclinations (degrees, relative to ecliptic) ─
+// Source: NASA Jet Propulsion Laboratory planetary fact sheets
+const PLANETS_FALLBACK = [
+  {
+    name:'Mercury', color:'#b5b5b5', radius:0.38, orbitRadius:8,    speed:4.15,  inclination:7.005,
+    type:'Rocky / Terrestrial', diameter:'4,879 km',   distance:'57.9M km',   period:'88 Earth days',   moons:'0',
+    fact:"Mercury has the highest orbital inclination of the 8 planets at 7°, causing it to bob noticeably above and below the ecliptic plane as it zips around the Sun."
+  },
+  {
+    name:'Venus',   color:'#e8cda0', radius:0.95, orbitRadius:12,   speed:1.62,  inclination:3.395,
+    type:'Rocky / Terrestrial', diameter:'12,104 km',  distance:'108.2M km',  period:'225 Earth days',  moons:'0',
+    fact:"Venus rotates backwards and its orbit is tilted 3.4° from the ecliptic. A day on Venus is longer than its year."
+  },
+  {
+    name:'Earth',   color:'#4a90d9', radius:1.0,  orbitRadius:16.5, speed:1.0,   inclination:0.0,
+    type:'Rocky / Terrestrial', diameter:'12,742 km',  distance:'149.6M km',  period:'365.25 days',     moons:'1',
+    fact:"Earth's orbit defines the ecliptic plane itself, so its inclination is 0°. All other planet inclinations are measured relative to Earth's orbital plane."
+  },
+  {
+    name:'Mars',    color:'#c1440e', radius:0.53, orbitRadius:21,   speed:0.53,  inclination:1.850,
+    type:'Rocky / Terrestrial', diameter:'6,779 km',   distance:'227.9M km',  period:'687 Earth days',  moons:'2',
+    fact:"Mars has a modest 1.85° inclination. Its orbit is also notably elliptical, making its distance from the Sun vary by about 42 million km."
+  },
+  {
+    name:'Jupiter', color:'#c88b3a', radius:2.6,  orbitRadius:30,   speed:0.084, inclination:1.304,
+    type:'Gas Giant',           diameter:'139,820 km', distance:'778.5M km',  period:'12 Earth years',  moons:'95',
+    fact:"Jupiter's small 1.3° inclination keeps it close to the ecliptic. Its enormous gravity actually shepherds the orbits of many other bodies in the solar system."
+  },
+  {
+    name:'Saturn',  color:'#e4d191', radius:2.2,  orbitRadius:40,   speed:0.034, inclination:2.485,
+    type:'Gas Giant',           diameter:'116,460 km', distance:'1,432M km',  period:'29 Earth years',  moons:'146',
+    fact:"Saturn's rings are tilted 27° relative to its orbit, which is itself tilted 2.5° from the ecliptic. This double tilt creates dramatic ring views from Earth."
+  },
+  {
+    name:'Uranus',  color:'#7de8e8', radius:1.7,  orbitRadius:52,   speed:0.012, inclination:0.773,
+    type:'Ice Giant',           diameter:'50,724 km',  distance:'2,867M km',  period:'84 Earth years',  moons:'28',
+    fact:"Uranus has the smallest orbital inclination of all planets at just 0.77°, yet its axial tilt is a wild 98° — it essentially rolls around the Sun on its side."
+  },
+  {
+    name:'Neptune', color:'#4b70dd', radius:1.65, orbitRadius:62,   speed:0.006, inclination:1.769,
+    type:'Ice Giant',           diameter:'49,244 km',  distance:'4,515M km',  period:'165 Earth years', moons:'16',
+    fact:"Neptune takes 165 Earth years to complete one orbit. It has only completed one full orbit since its discovery in 1846 — it finished its first lap in 2011."
+  },
+];
+
+const ORBIT_LAYOUT = [
+  { orbitRadius:8,    speed:4.15  },
+  { orbitRadius:12,   speed:1.62  },
+  { orbitRadius:16.5, speed:1.0   },
+  { orbitRadius:21,   speed:0.53  },
+  { orbitRadius:30,   speed:0.084 },
+  { orbitRadius:40,   speed:0.034 },
+  { orbitRadius:52,   speed:0.012 },
+  { orbitRadius:62,   speed:0.006 },
+];
+
+// Global state
+let PLANETS = PLANETS_FALLBACK.map((p, i) => ({ ...p, ...ORBIT_LAYOUT[i] }));
+let speedMult = 1;
+let paused = false;
+let inclinationOn = true;
+
+// Load data.json if available
+async function tryLoadLiveData() {
+  const statusEl = document.getElementById('data-status');
+  try {
+    const res = await fetch('data.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.planets || json.planets.length === 0) throw new Error('Empty');
+
+    PLANETS = json.planets.map((p, i) => {
+      const layout  = ORBIT_LAYOUT[i];
+      const fallback = PLANETS_FALLBACK[i];
+      let distanceDisplay = fallback.distance;
+      if (p.distance_au && !isNaN(p.distance_au) && p.distance_au < 100) {
+        // distance_au is already in AU (e.g. 5.2 for Jupiter)
+        // Convert to million km: 1 AU = 149.598 million km
+        const mkm = (p.distance_au * 149.598).toFixed(1);
+        distanceDisplay = `${mkm}M km (${p.distance_au.toFixed(4)} AU)`;
+      }
+      return {
+        ...fallback,
+        ...layout,
+        distance: distanceDisplay,
+      };
+    });
+
+    statusEl.textContent = `🛰 Live NASA data — ${json.date || 'today'}`;
+    statusEl.className = 'live';
+  } catch (e) {
+    statusEl.textContent = '⚠ Static data — run fetch_planets.py for live positions';
+    statusEl.className = 'static';
+  }
+}
+
+// Info panel
+function showInfo(index) {
+  const p = PLANETS[index];
+  document.getElementById('ip-name').textContent     = p.name;
+  document.getElementById('ip-type').textContent     = p.type;
+  document.getElementById('ip-diameter').textContent = p.diameter;
+  document.getElementById('ip-distance').textContent = p.distance;
+  document.getElementById('ip-period').textContent   = p.period;
+  document.getElementById('ip-incl').textContent     = `${p.inclination.toFixed(3)}°`;
+  document.getElementById('ip-moons').textContent    = p.moons;
+  document.getElementById('ip-fact').textContent     = p.fact;
+  document.getElementById('info-panel').classList.add('visible');
+  document.querySelectorAll('.planet-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`pb-${index}`)?.classList.add('active');
+}
+
+// Build scene
+function buildScene() {
+  const scene = new THREE.Scene();
+  const W = window.innerWidth, H = window.innerHeight;
+  const camera = new THREE.PerspectiveCamera(55, W/H, 0.1, 2000);
+  camera.position.set(0, 45, 85);
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+  // Stars
+  const starPos = new Float32Array(9000);
+  for (let i = 0; i < 9000; i++) starPos[i] = (Math.random() - 0.5) * 1200;
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color:0xffffff, size:0.35, sizeAttenuation:true })));
+
+  // Ecliptic reference grid (faint)
+  const gridHelper = new THREE.GridHelper(160, 20, 0x221144, 0x110a22);
+  scene.add(gridHelper);
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0x222244, 1.2));
+  scene.add(new THREE.PointLight(0xfff4e0, 3.5, 300));
+
+  // Sun
+  const sun = new THREE.Mesh(
+    new THREE.SphereGeometry(3.5, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffd060 })
+  );
+  scene.add(sun);
+
+  // Sun glow
+  const gc = document.createElement('canvas');
+  gc.width = gc.height = 128;
+  const gx = gc.getContext('2d');
+  const gr = gx.createRadialGradient(64,64,0,64,64,64);
+  gr.addColorStop(0, 'rgba(255,210,80,0.7)');
+  gr.addColorStop(0.4, 'rgba(255,140,30,0.25)');
+  gr.addColorStop(1, 'rgba(255,80,0,0)');
+  gx.fillStyle = gr; gx.fillRect(0,0,128,128);
+  const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(gc), transparent:true, depthWrite:false }));
+  glowSprite.scale.set(22,22,1);
+  scene.add(glowSprite);
+
+  // Build orbit paths and planet meshes
+  // Each orbit is a tilted ellipse drawn as a line loop.
+  // We use a pivot Object3D rotated by the planet's inclination angle,
+  // then place the planet mesh as a child — so it naturally follows the tilted plane.
+
+  const DEG = Math.PI / 180;
+  const orbitAngles = PLANETS.map(() => Math.random() * Math.PI * 2);
+  const planetMeshes = [];
+  const orbitLines = [];   // so we can toggle visibility
+  const pivots = [];       // one per planet — rotated by inclination
+
+  PLANETS.forEach((p, i) => {
+    const incl = p.inclination * DEG;
+
+    // -- Orbit line (tilted ellipse drawn with points) --
+    const orbitPoints = [];
+    const segments = 180;
+    for (let s = 0; s <= segments; s++) {
+      const angle = (s / segments) * Math.PI * 2;
+      // In the tilted plane: x stays flat, y tilts up with sin(incl)
+      orbitPoints.push(new THREE.Vector3(
+        Math.cos(angle) * p.orbitRadius,
+        Math.sin(angle) * p.orbitRadius * Math.sin(incl),
+        Math.sin(angle) * p.orbitRadius * Math.cos(incl)
+      ));
+    }
+    const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+    const orbitLine = new THREE.Line(orbitGeo, new THREE.LineBasicMaterial({ color: 0x554488, transparent: true, opacity: 0.45 }));
+    scene.add(orbitLine);
+    orbitLines.push(orbitLine);
+
+    // -- Planet pivot (rotated by inclination around X axis) --
+    const pivot = new THREE.Object3D();
+    pivot.rotation.x = incl;   // tilt the whole orbital plane
+    scene.add(pivot);
+    pivots.push(pivot);
+
+    // -- Planet sphere --
+    const mat = new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.78, metalness: 0.05 });
+    if (p.name === 'Earth') mat.color.set('#5ca8e8');
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.radius, 28, 28), mat);
+    mesh.userData = { planetIndex: i };
+    pivot.add(mesh);     // child of pivot so it inherits the tilt
+    planetMeshes.push(mesh);
+
+    // Saturn rings
+    if (p.name === 'Saturn') {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(p.radius * 1.5, p.radius * 2.5, 80),
+        new THREE.MeshBasicMaterial({ color: 0xd4c48a, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })
+      );
+      ring.rotation.x = Math.PI / 2.6;
+      mesh.add(ring);
+    }
+  });
+
+  // Sidebar buttons
+  const listEl = document.getElementById('planet-list');
+  PLANETS.forEach((p, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'planet-btn';
+    btn.id = `pb-${i}`;
+    btn.innerHTML = `<span class="dot" style="background:${p.color}"></span>${p.name}`;
+    btn.addEventListener('click', () => showInfo(i));
+    listEl.appendChild(btn);
+  });
+
+  // Inclination toggle button
+  const inclBtn = document.getElementById('incl-toggle');
+  inclBtn.addEventListener('click', () => {
+    inclinationOn = !inclinationOn;
+    inclBtn.textContent = `⬡ Inclination: ${inclinationOn ? 'ON' : 'OFF'}`;
+    inclBtn.className = inclinationOn ? 'on' : '';
+
+    PLANETS.forEach((p, i) => {
+      const targetIncl = inclinationOn ? p.inclination * DEG : 0;
+      pivots[i].rotation.x   = targetIncl;
+      // Rebuild orbit line for flat/tilted
+      const segments = 180;
+      const orbitPoints = [];
+      for (let s = 0; s <= segments; s++) {
+        const angle = (s / segments) * Math.PI * 2;
+        const incl2 = inclinationOn ? p.inclination * DEG : 0;
+        orbitPoints.push(new THREE.Vector3(
+          Math.cos(angle) * p.orbitRadius,
+          Math.sin(angle) * p.orbitRadius * Math.sin(incl2),
+          Math.sin(angle) * p.orbitRadius * Math.cos(incl2)
+        ));
+      }
+      orbitLines[i].geometry.setFromPoints(orbitPoints);
+      orbitLines[i].geometry.attributes.position.needsUpdate = true;
+    });
+  });
+
+  // Orbit camera controls
+  let isDragging = false, prevMouse = { x:0, y:0 };
+  const sph = { theta:0.3, phi: Math.PI/3.5, radius: camera.position.length() };
+  function updateCamera() {
+    camera.position.set(
+      sph.radius * Math.sin(sph.phi) * Math.sin(sph.theta),
+      sph.radius * Math.cos(sph.phi),
+      sph.radius * Math.sin(sph.phi) * Math.cos(sph.theta)
+    );
+    camera.lookAt(0,0,0);
+  }
+  renderer.domElement.addEventListener('mousedown', e => { isDragging=true; prevMouse={x:e.clientX,y:e.clientY}; });
+  window.addEventListener('mouseup', () => isDragging=false);
+  renderer.domElement.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    sph.theta -= (e.clientX - prevMouse.x) * 0.007;
+    sph.phi = Math.max(0.1, Math.min(Math.PI-0.1, sph.phi + (e.clientY - prevMouse.y) * 0.007));
+    prevMouse = {x:e.clientX, y:e.clientY};
+    updateCamera();
+  });
+  renderer.domElement.addEventListener('wheel', e => {
+    sph.radius = Math.max(15, Math.min(220, sph.radius + e.deltaY * 0.08));
+    updateCamera();
+  });
+  let lastTouch = null;
+  renderer.domElement.addEventListener('touchstart', e => { lastTouch=e.touches[0]; });
+  renderer.domElement.addEventListener('touchmove', e => {
+    if (!lastTouch) return;
+    sph.theta -= (e.touches[0].clientX - lastTouch.clientX) * 0.007;
+    sph.phi = Math.max(0.1, Math.min(Math.PI-0.1, sph.phi + (e.touches[0].clientY - lastTouch.clientY) * 0.007));
+    lastTouch = e.touches[0];
+    updateCamera();
+  });
+  updateCamera();
+
+  // Click to select
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  renderer.domElement.addEventListener('click', e => {
+    mouse.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObjects(planetMeshes);
+    if (hits.length > 0) showInfo(hits[0].object.userData.planetIndex);
+  });
+
+  // Speed & pause
+  document.getElementById('speed-slider').addEventListener('input', e => { speedMult = parseFloat(e.target.value); });
+  document.getElementById('pause-btn').addEventListener('click', () => {
+    paused = !paused;
+    document.getElementById('pause-btn').textContent = paused ? '▶ Resume' : '⏸ Pause';
+  });
+  document.getElementById('close-panel').addEventListener('click', () => {
+    document.getElementById('info-panel').classList.remove('visible');
+    document.querySelectorAll('.planet-btn').forEach(b => b.classList.remove('active'));
+  });
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Animation loop
+  // Planet position along its inclined orbit:
+  //   x = cos(angle) * orbitRadius          (stays in ecliptic X)
+  //   z = sin(angle) * orbitRadius          (in the pivot's local Z)
+  // Because the pivot is rotated by inclination around X, the local Z
+  // automatically becomes tilted in world space — no extra math needed.
+
+  const clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+    if (!paused) {
+      PLANETS.forEach((p, i) => {
+        orbitAngles[i] += p.speed * 0.003 * speedMult * dt * 60;
+        planetMeshes[i].position.set(
+          Math.cos(orbitAngles[i]) * p.orbitRadius,
+          0,
+          Math.sin(orbitAngles[i]) * p.orbitRadius
+        );
+        planetMeshes[i].rotation.y += 0.008 * speedMult;
+      });
+      sun.rotation.y += 0.002 * speedMult;
+    }
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+// Boot
+tryLoadLiveData().then(() => buildScene());
+</script>
+</body>
+</html>
