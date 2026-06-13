@@ -16,6 +16,4 @@ This script acts as the automated data pipeline. It leverages `requests` and `re
 - `REF_PLANE='ECLIPTIC'`: Ensures all rectangular vector assignments (_X_,_Y_,_Z_) align directly with Earth's orbital plane.
 - `VEC_TABLE='2'`: Requests raw state vectors (position components measured natively in kilometers).
 The script isolates data sandwiched between NASA's traditional plain-text formatting blocks (`$$SOE` / `$$EOE`), converts raw kilometers to Astronomical Units (1 AU ≈ 149,597,870.7 km), and calculates the real-time distance vector via the Pythagorean theorem in 3D space:
-$$
-distance_au = \sqrt{x^2 + y^2 + z^2}
-$$
+$distance_au = \sqrt{x^2 + y^2 + z^2}$
