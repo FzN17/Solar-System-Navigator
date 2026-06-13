@@ -18,3 +18,9 @@ This script acts as the automated data pipeline. It leverages `requests` and `re
 The script isolates data sandwiched between NASA's traditional plain-text formatting blocks (`$$SOE` / `$$EOE`), converts raw kilometers to Astronomical Units (1 AU ≈ 149,597,870.7 km), and calculates the real-time distance vector via the Pythagorean theorem in 3D space:
 
 $distance au = \sqrt{x^2 + y^2 + z^2}$
+## Layer B: The Structured Data Cache (data.json)
+Acts as a lightweight data contract between backend extraction and frontend presentation. It stores static structural metadata (planet colors, diameters, educational fun facts, and moon counts) alongside the dynamic positioning values (`x_au`, `y_au`, `z_au`, `distance_au`) freshly calculated by the Python script.
+## Layer C: The Interactive 3D Canvas (solar_system.html)
+The frontend rendering engine uses the Three.js WebGL library to generate a fluid, hardware-accelerated viewport.
+- **Starfields & Lighting**: Utilizes an asynchronous `BufferGeometry` array holding 9,000 spatial points to draw stars, a high-intensity central `PointLight` acting as the Sun, and a soft `AmbientLight` to avoid pitch-black unlit planet faces.
+- **Camera Controls**: Implements a custom mathematical orbital camera system via pointer event listeners (`mousedown`, `mousemove`, `wheel`, `touch`). It maps raw pixel shifts to spherical coordinate angles (_θ_ and _ϕ_), providing fluid mouse drags and scrolling zooms without requiring heavy external add-ons.
